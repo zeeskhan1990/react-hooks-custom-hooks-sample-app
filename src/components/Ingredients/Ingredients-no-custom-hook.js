@@ -4,7 +4,6 @@ import IngredientForm from './IngredientForm';
 import IngredientList from './IngredientList'
 import Search from './Search';
 import {convertResponse, convertToPostBody} from '../../Utils'
-import useHttp from '../../hooks/http'
 
 //You define reducer outside so that it doesn't redefine everytime with re-render
 const ingredientReducer = (currentIngredients, action) => {
@@ -20,16 +19,24 @@ const ingredientReducer = (currentIngredients, action) => {
   }
 }
 
-
+const httpReducer = (currentHttpState, action) => {
+  switch(action.type) {
+    case 'REQUEST_START':
+      return {loading: true, error: null}
+    case 'REQUEST_SUCCESS':
+      return {...currentHttpState, loading: false}
+    case 'REQUEST_FAIL':
+      return {loading: false, error: action.error}
+    case 'CLEAR_ERROR':
+        return {...currentHttpState, error: null}
+    default:
+      throw new Error()
+  }
+}
 
 function Ingredients() {
   const [ingredients, ingredientsDispatch] = useReducer(ingredientReducer, [])
-
-  /**
-   * Custom Hook in Use
-   */
-  const {isLoading, error, data, sendRequest, extraArgs} = useHttp()
-
+  const [httpState, httpDispatch] = useReducer(httpReducer, {loading: false, error: null})
   //const [stateIngredients, setIngredients] = useState([])
   //const [isLoading, setIsLoading] = useState(false)
   //const [error, setError] = useState('')
@@ -72,57 +79,66 @@ function Ingredients() {
 
   
   useEffect(() => {
-    console.log('USE EFFECT RENDERING!', data)
-    if(extraArgs) {
-      ingredientsDispatch({type: 'DELETE', ingredientId: extraArgs})
-    } else {
-      ingredientsDispatch({type: 'ADD'/* , ingredient: {id: ingredientId, ...addedIngredient} */})
-    }
-  }, [data, extraArgs])
+    console.log('USE EFFECT RENDERING!')
+  })
 
 
   const addIngredientHandler = useCallback(async ingredient => {
-    // //setIsLoading(true)
-    // httpDispatch({type: 'REQUEST_START'})
-    // const postBody = convertToPostBody(ingredient)
-    // try {
-    //   const response = await fetch(ingredientsUrl, {
-    //     method: 'POST',
-    //     body: JSON.stringify(postBody),
-    //     headers: {
-    //       'Content-Type': 'application/json'
-    //     }
-    //   })
-    //   const responseData = await response.json()
-    //   //setIsLoading(false)
-    //   httpDispatch({type: 'REQUEST_SUCCESS'})
-    //   const ingredientId = responseData.name.split(/[/ ]+/).pop()
-    //   const addedIngredient = convertResponse(responseData)
-    //   //setIngredients((prevIngredients) => [...prevIngredients, {id: ingredientId, ...addedIngredient}])
-    //   ingredientsDispatch({type: 'ADD', ingredient: {id: ingredientId, ...addedIngredient}})
-    // } catch(error) {
-    //   console.log(error)
-    //   /* setIsLoading(false)
-    //   setError('Something Went Wrong!') */
-    //   httpDispatch({type: 'REQUEST_FAIL', error})
-    // }
-    const ingredientsUrl = 'https://firestore.googleapis.com/v1/projects/react-hooks-sample-15ed6/databases/(default)/documents/ingredients'
+    //setIsLoading(true)
+    httpDispatch({type: 'REQUEST_START'})
     const postBody = convertToPostBody(ingredient)
-    sendRequest(ingredientsUrl, 'POST', JSON.stringify(postBody))
+    try {
+      const response = await fetch(ingredientsUrl, {
+        method: 'POST',
+        body: JSON.stringify(postBody),
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+      const responseData = await response.json()
+      //setIsLoading(false)
+      httpDispatch({type: 'REQUEST_SUCCESS'})
+      const ingredientId = responseData.name.split(/[/ ]+/).pop()
+      const addedIngredient = convertResponse(responseData)
+      //setIngredients((prevIngredients) => [...prevIngredients, {id: ingredientId, ...addedIngredient}])
+      ingredientsDispatch({type: 'ADD', ingredient: {id: ingredientId, ...addedIngredient}})
+    } catch(error) {
+      console.log(error)
+      /* setIsLoading(false)
+      setError('Something Went Wrong!') */
+      httpDispatch({type: 'REQUEST_FAIL', error})
+    }
   }, [])
 
   const removeIngredientHandler = useCallback(async ingredientId => {
     //setIsLoading(true)
+    httpDispatch({type: 'REQUEST_START'})
     const deleteIngredientUrl = `https://firestore.googleapis.com/v1/projects/react-hooks-sample-15ed6/databases/(default)/documents/ingredients/${ingredientId}`
-    sendRequest(deleteIngredientUrl, 'DELETE', ingredientId)
-  }, [sendRequest])
+    try {
+      const response = await fetch(deleteIngredientUrl, {
+        method: 'DELETE'
+      })
+      /* const updatedIngredients = reducerIngredients.filter((currentIngredient) => {
+        return currentIngredient.id !== ingredientId
+      }) */
+      ingredientsDispatch({type: 'DELETE', ingredientId})
+      //setIngredients(updatedIngredients)
+      //setIsLoading(false)
+      httpDispatch({type: 'REQUEST_SUCCESS'})
+    } catch(error) {
+      console.log(error)
+      /* setIsLoading(false)
+      setError('Something Went Wrong!') */
+      httpDispatch({type: 'REQUEST_FAIL', error})
+    }
+  }, [])
 
   const filterIngredientHandler = useCallback(filteredIngredients => {
     //setIngredients(filteredIngredients)
     ingredientsDispatch({type: 'SET', ingredients:filteredIngredients})
   }, [])
 
-  const resetError = () => { /* return httpDispatch({type: 'CLEAR_ERROR'}) */ }
+  const resetError = () => httpDispatch({type: 'CLEAR_ERROR'})
 
   const ingredientList = useMemo(() => {
     return (<IngredientList ingredients={ingredients} onRemoveItem={removeIngredientHandler}/>) 
@@ -130,8 +146,8 @@ function Ingredients() {
 
   return (
     <div className="App">
-      {error && <ErrorModal onClose={resetError}>{error}</ErrorModal>}
-      <IngredientForm onAddIngredient={addIngredientHandler} loading={isLoading}/>
+      {httpState.error && <ErrorModal onClose={resetError}>{httpState.error}</ErrorModal>}
+      <IngredientForm onAddIngredient={addIngredientHandler} loading={httpState.isLoading}/>
       <section>
         <Search onLoadIngredients={filterIngredientHandler}/>
         {ingredientList}
